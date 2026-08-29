@@ -3,7 +3,44 @@ let me,cs=[],ts=[],us=[];
 const $=x=>document.getElementById(x),today=()=>new Date().toISOString().slice(0,10),esc=x=>(x??"").toString().replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));
 const age=d=>{if(!d)return"";let x=new Date(d),n=new Date(),a=n.getFullYear()-x.getFullYear();if(n<new Date(n.getFullYear(),x.getMonth(),x.getDate()))a--;return a};
 const date=d=>d?new Date(d+"T00:00").toLocaleDateString("de-DE"):"—";
-async function start(){let {data:{session}}=await db.auth.getSession();if(session)await app();$("lf").onsubmit=async e=>{e.preventDefault();let r=await db.auth.signInWithPassword({email:$("le").value,password:$("lp").value});if(r.error)$("lm").textContent=r.error.message};$("out").onclick=()=>db.auth.signOut();db.auth.onAuthStateChange((_,s)=>{if(!s){$("app").hidden=true;$("login").hidden=false}})}
+async function start(){
+  let {data:{session}}=await db.auth.getSession();
+
+  if(session){
+    await app();
+  }
+
+  $("lf").onsubmit=async e=>{
+    e.preventDefault();
+
+    $("lm").textContent="Anmeldung läuft…";
+
+    let r=await db.auth.signInWithPassword({
+      email:$("le").value,
+      password:$("lp").value
+    });
+
+    if(r.error){
+      $("lm").textContent=r.error.message;
+      return;
+    }
+
+    $("lm").textContent="";
+
+    await app();
+  };
+
+  $("out").onclick=async()=>{
+    await db.auth.signOut();
+  };
+
+  db.auth.onAuthStateChange((event,session)=>{
+    if(!session){
+      $("app").hidden=true;
+      $("login").hidden=false;
+    }
+  });
+}
 async function app(){let {data:{user}}=await db.auth.getUser();let r=await db.from("profiles").select("*").eq("id",user.id).single();me=r.data;$("login").hidden=true;$("app").hidden=false;$("who").textContent=(me.full_name||user.email)+" · "+me.role;$("usersNav").hidden=me.role!=="admin";await load();nav()}
 async function load(){let a=await db.from("customers").select("*").order("updated_at",{ascending:false}),b=await db.from("tasks").select("*").order("due_date",{ascending:true}),c=await db.from("profiles").select("*").order("full_name");cs=a.data||[];ts=b.data||[];us=c.data||[];render()}
 function nav(){document.querySelectorAll("aside button[data-v]").forEach(b=>b.onclick=()=>{document.querySelectorAll("main section").forEach(s=>s.hidden=true);$(b.dataset.v).hidden=false;document.querySelectorAll("aside button").forEach(x=>x.classList.remove("active"));b.classList.add("active");$("side").classList.remove("open")});$("menu").onclick=()=>$("side").classList.toggle("open");$("add1").onclick=$("add2").onclick=()=>customer();$("addt").onclick=()=>task();$("search").oninput=$("cat").onchange=$("state").onchange=$("tf").onchange=renderCustomers;$("tfilter").onchange=renderTasks;$("cf").onsubmit=saveCustomer;$("tfm").onsubmit=saveTask}
