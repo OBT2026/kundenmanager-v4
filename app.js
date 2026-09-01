@@ -3,8 +3,137 @@ let me,cs=[],ts=[],us=[];
 const $=x=>document.getElementById(x),today=()=>new Date().toISOString().slice(0,10),esc=x=>(x??"").toString().replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));
 const age=d=>{if(!d)return"";let x=new Date(d),n=new Date(),a=n.getFullYear()-x.getFullYear();if(n<new Date(n.getFullYear(),x.getMonth(),x.getDate()))a--;return a};
 const date=d=>d?new Date(d+"T00:00").toLocaleDateString("de-DE"):"—";
-async function start(){  let {data:{session}}=await db.auth.getSession();  if(session){    await app();  }  $("lf").onsubmit=async e=>{    e.preventDefault();    $("lm").textContent="Anmeldung läuft…";    let r=await db.auth.signInWithPassword({     email:$("le").value,      password:$("lp").value    });    if(r.error){      $("lm").textContent=r.error.message;      return;    }    $("lm").textContent="";    await app();  };  $("out").onclick=async()=>{    await db.auth.signOut();  };  db.auth.onAuthStateChange((event,session)=>{    if(!session){      $("app").hidden=true;      $("login").hidden=false;    }  });}
-async function app(){let {data:{user}}=await db.auth.getUser();let r=await db.from("profiles").select("*").eq("id",user.id).single();me=r.data;$("login").hidden=true;$("app").hidden=false;$("who").textContent=(me.full_name||user.email)+" · "+me.role;$("usersNav").hidden=me.role!=="admin";await load();nav()}
+async function start(){
+  try {
+    const { data: { session }, error } = await db.auth.getSession();
+
+    if(error){
+      console.error("getSession:", error);
+      $("lm").textContent = "Supabase-Fehler: " + error.message;
+    }
+
+    if(session){
+      await app();
+    }
+
+    $("lf").onsubmit = async e => {
+      e.preventDefault();
+
+      $("lm").textContent = "Anmeldung läuft...";
+
+      try {
+        const { data, error } = await db.auth.signInWithPassword({
+          email: $("le").value.trim(),
+          password: $("lp").value
+        });
+
+        console.log("LOGIN:", data, error);
+
+        if(error){
+          $("lm").textContent = "Login-Fehler: " + error.message;
+          return;
+        }
+
+        if(!data.session){
+          $("lm").textContent = "Anmeldung erfolgreich, aber keine Sitzung erhalten.";
+          return;
+        }
+
+        $("lm").textContent = "Angemeldet. Lade KundenManager...";
+
+        await app();
+
+      } catch(err) {
+        console.error(err);
+        $("lm").textContent = "Fehler: " + err.message;
+      }
+    };
+
+    $("out").onclick = async () => {
+      await db.auth.signOut();
+    };
+
+    db.auth.onAuthStateChange((event, session) => {
+      console.log("AUTH EVENT:", event);
+
+      if(!session){
+        $("app").hidden = true;
+        $("login").hidden = false;
+      }
+    });
+
+  } catch(err) {
+    console.error(err);
+    $("lm").textContent = "Startfehler: " + err.message;
+  }
+}
+
+
+async function app(){
+  try {
+
+    console.log("APP START");
+
+    const { data: { user }, error: userError } = await db.auth.getUser();
+
+    if(userError){
+      throw new Error("Benutzer konnte nicht geladen werden: " + userError.message);
+    }
+
+    if(!user){
+      throw new Error("Kein angemeldeter Benutzer gefunden.");
+    }
+
+    console.log("USER:", user);
+
+    const { data: profile, error: profileError } = await db
+      .from("profiles")
+      .select("*")
+      .eq("id", user.id)
+      .single();
+
+    if(profileError){
+      throw new Error(
+        "Profil konnte nicht geladen werden: " +
+        profileError.message
+      );
+    }
+
+    if(!profile){
+      throw new Error(
+        "Kein Profil für diese Benutzer-ID vorhanden."
+      );
+    }
+
+    console.log("PROFILE:", profile);
+
+    me = profile;
+
+    $("login").hidden = true;
+    $("app").hidden = false;
+
+    $("who").textContent =
+      (me.full_name || user.email) +
+      " · " +
+      (me.role || "user");
+
+    await load();
+
+    nav();
+
+  } catch(err) {
+
+    console.error("APP FEHLER:", err);
+
+    $("login").hidden = false;
+    $("app").hidden = true;
+
+    $("lm").innerHTML =
+      "<b>Fehler beim Laden:</b><br>" +
+      esc(err.message);
+
+  }
+}
 async function load(){let a=await db.from("customers").select("*").order("updated_at",{ascending:false}),b=await db.from("tasks").select("*").order("due_date",{ascending:true}),c=await db.from("profiles").select("*").order("full_name");cs=a.data||[];ts=b.data||[];us=c.data||[];render()}
 function nav(){document.querySelectorAll("aside button[data-v]").forEach(b=>b.onclick=()=>{document.querySelectorAll("main section").forEach(s=>s.hidden=true);$(b.dataset.v).hidden=false;document.querySelectorAll("aside button").forEach(x=>x.classList.remove("active"));b.classList.add("active");$("side").classList.remove("open")});$("menu").onclick=()=>$("side").classList.toggle("open");$("add1").onclick=$("add2").onclick=()=>customer();$("addt").onclick=()=>task();$("search").oninput=$("cat").onchange=$("state").onchange=$("tf").onchange=renderCustomers;$("tfilter").onchange=renderTasks;$("cf").onsubmit=saveCustomer;$("tfm").onsubmit=saveTask}
 function render(){let cats=[...new Set(cs.map(c=>c.category).filter(Boolean))].sort();$("cat").innerHTML='<option value="">Alle Kategorien</option>'+cats.map(x=>`<option>${esc(x)}</option>`).join("");$("sc").textContent=cs.length;$("st").textContent=ts.filter(x=>!x.completed).length;$("sa").textContent=cs.filter(x=>x.state!=="Erledigt").length;$("so").textContent=ts.filter(x=>!x.completed&&x.due_date&&x.due_date<today()).length;$("dt").innerHTML=ts.filter(x=>!x.completed).slice(0,8).map(item).join("")||'<div class="empty">Keine offenen Aufgaben.</div>';$("dc").innerHTML=cs.slice(0,8).map(c=>`<div class="item" onclick="detailOpen('${c.id}')"><b>${esc(c.first)} ${esc(c.last)}</b><small>${esc(c.company||"")} · ${esc(c.state)}</small></div>`).join("")||'<div class="empty">Noch keine Kunden.</div>';renderCustomers();renderTasks();renderCalendar();renderUsers()}
