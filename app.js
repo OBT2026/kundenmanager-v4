@@ -67,73 +67,58 @@ async function start(){
     $("lm").textContent = "Startfehler: " + err.message;
   }
 }
-
-
 async function app(){
   try {
-
-    console.log("APP START");
-
     const { data: { user }, error: userError } = await db.auth.getUser();
 
-    if(userError){
-      throw new Error("Benutzer konnte nicht geladen werden: " + userError.message);
+    if (userError) {
+      throw userError;
     }
 
-    if(!user){
-      throw new Error("Kein angemeldeter Benutzer gefunden.");
+    if (!user) {
+      $("login").hidden = false;
+      $("app").hidden = true;
+      return;
     }
 
-    console.log("USER:", user);
-
-    const { data: profile, error: profileError } = await db
+    const r = await db
       .from("profiles")
       .select("*")
       .eq("id", user.id)
       .single();
 
-    if(profileError){
-      throw new Error(
-        "Profil konnte nicht geladen werden: " +
-        profileError.message
-      );
+    if (r.error) {
+      throw r.error;
     }
 
-    if(!profile){
-      throw new Error(
-        "Kein Profil für diese Benutzer-ID vorhanden."
-      );
+    if (!r.data) {
+      throw new Error("Kein Profil für diesen Benutzer gefunden.");
     }
 
-    console.log("PROFILE:", profile);
-
-    me = profile;
+    me = r.data;
 
     $("login").hidden = true;
     $("app").hidden = false;
 
     $("who").textContent =
-      (me.full_name || user.email) +
-      " · " +
-      (me.role || "user");
+      (me.full_name || user.email) + " · " + me.role;
 
     await load();
-
     nav();
 
-  } catch(err) {
-
-    console.error("APP FEHLER:", err);
+  } catch (err) {
+    console.error("APP LOGIN FEHLER:", err);
 
     $("login").hidden = false;
     $("app").hidden = true;
 
-    $("lm").innerHTML =
-      "<b>Fehler beim Laden:</b><br>" +
-      esc(err.message);
-
+    $("lm").textContent =
+      "Fehler beim Laden des Benutzerprofils: " +
+      (err.message || err);
   }
 }
+
+
 async function load(){let a=await db.from("customers").select("*").order("updated_at",{ascending:false}),b=await db.from("tasks").select("*").order("due_date",{ascending:true}),c=await db.from("profiles").select("*").order("full_name");cs=a.data||[];ts=b.data||[];us=c.data||[];render()}
 function nav(){document.querySelectorAll("aside button[data-v]").forEach(b=>b.onclick=()=>{document.querySelectorAll("main section").forEach(s=>s.hidden=true);$(b.dataset.v).hidden=false;document.querySelectorAll("aside button").forEach(x=>x.classList.remove("active"));b.classList.add("active");$("side").classList.remove("open")});$("menu").onclick=()=>$("side").classList.toggle("open");$("add1").onclick=$("add2").onclick=()=>customer();$("addt").onclick=()=>task();$("search").oninput=$("cat").onchange=$("state").onchange=$("tf").onchange=renderCustomers;$("tfilter").onchange=renderTasks;$("cf").onsubmit=saveCustomer;$("tfm").onsubmit=saveTask}
 function render(){let cats=[...new Set(cs.map(c=>c.category).filter(Boolean))].sort();$("cat").innerHTML='<option value="">Alle Kategorien</option>'+cats.map(x=>`<option>${esc(x)}</option>`).join("");$("sc").textContent=cs.length;$("st").textContent=ts.filter(x=>!x.completed).length;$("sa").textContent=cs.filter(x=>x.state!=="Erledigt").length;$("so").textContent=ts.filter(x=>!x.completed&&x.due_date&&x.due_date<today()).length;$("dt").innerHTML=ts.filter(x=>!x.completed).slice(0,8).map(item).join("")||'<div class="empty">Keine offenen Aufgaben.</div>';$("dc").innerHTML=cs.slice(0,8).map(c=>`<div class="item" onclick="detailOpen('${c.id}')"><b>${esc(c.first)} ${esc(c.last)}</b><small>${esc(c.company||"")} · ${esc(c.state)}</small></div>`).join("")||'<div class="empty">Noch keine Kunden.</div>';renderCustomers();renderTasks();renderCalendar();renderUsers()}
